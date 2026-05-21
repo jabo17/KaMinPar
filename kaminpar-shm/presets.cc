@@ -23,6 +23,8 @@ Context create_context_by_preset_name(const std::string &name) {
     return create_fast_context();
   } else if (name == "eco" || name == "fm") {
     return create_eco_context();
+  } else if (name == "ueco") {
+    return create_ueco_context();
   } else if (name == "strong" || name == "flow") {
     return create_strong_context();
   }
@@ -80,29 +82,14 @@ Context create_context_by_preset_name(const std::string &name) {
 
 std::unordered_set<std::string> get_preset_names() {
   return {
-      "default",
-      "fast",
-      "eco",
-      "strong",
-      "largek",
-      "terapart",
-      "terapart-eco",
-      "terapart-largek",
-      "largek-fast",
-      "largek-eco",
-      "largek-strong",
-      "jet",
-      "4xjet",
-      "noref",
-      "fm",
-      "vcycle",
-      "restricted-vcycle",
-      "esa21-smallk",
-      "esa21-largek",
-      "esa21-largek-fast",
-      "esa21-strong",
-      "mtkahypar-kway",
-      "linear-time-kway",
+      "default",      "fast",           "eco",
+      "ueco",         "strong",         "largek",
+      "terapart",     "terapart-eco",   "terapart-largek",
+      "largek-fast",  "largek-eco",     "largek-strong",
+      "jet",          "4xjet",          "noref",
+      "fm",           "vcycle",         "restricted-vcycle",
+      "esa21-smallk", "esa21-largek",   "esa21-largek-fast",
+      "esa21-strong", "mtkahypar-kway", "linear-time-kway",
   };
 }
 
@@ -344,6 +331,7 @@ Context create_default_context() {
                       .max_num_neighbors = std::numeric_limits<NodeID>::max(),
                       .impl = LabelPropagationImplementation::SINGLE_PHASE,
                       .tie_breaking_strategy = TieBreakingStrategy::UNIFORM,
+                      .unconstrained_min_improvement_factor = 0.001,
                   },
               .kway_fm =
                   {
@@ -354,6 +342,12 @@ Context create_default_context() {
                       .unlock_seed_nodes = true,
                       .use_exact_abortion_threshold = false,
                       .abortion_threshold = 0.999,
+                      .unconstrained_num_iterations = 8,
+                      .unconstrained_min_improvement = 0.002,
+                      .unconstrained_penalty_min = 0.2,
+                      .unconstrained_penalty_max = 1.0,
+                      .unconstrained_rebalancing_node_inclusion_threshold = 0.7,
+                      .unconstrained_upper_bound = 0.0,
                       .gain_cache_strategy = GainCacheStrategy::COMPACT_HASHING,
                       .constant_high_degree_threshold = 0,
                       .k_based_high_degree_threshold = 1.0,
@@ -457,17 +451,40 @@ Context create_fast_context() {
   ctx.initial_partitioning.pool.max_num_repetitions = 1;
   return ctx;
 }
+
 Context create_eco_context() {
   Context ctx = create_default_context();
 
   ctx.refinement.algorithms = {
       RefinementAlgorithm::OVERLOAD_BALANCER,
-      // RefinementAlgorithm::UNDERLOAD_BALANCER, // FM does not support min block weights
       RefinementAlgorithm::LABEL_PROPAGATION,
       RefinementAlgorithm::KWAY_FM,
-      // RefinementAlgorithm::OVERLOAD_BALANCER,
-      RefinementAlgorithm::UNDERLOAD_BALANCER,
+      RefinementAlgorithm::OVERLOAD_BALANCER
   };
+
+  return ctx;
+}
+
+Context create_ueco_context() {
+  Context ctx = create_default_context();
+
+  ctx.refinement.algorithms = {
+      RefinementAlgorithm::OVERLOAD_BALANCER,
+      RefinementAlgorithm::UNCONSTRAINED_LABEL_PROPAGATION,
+      RefinementAlgorithm::UNCONSTRAINED_FM,
+      RefinementAlgorithm::OVERLOAD_BALANCER
+  };
+
+  ctx.refinement.lp.num_iterations = 5;
+  ctx.refinement.lp.unconstrained_min_improvement_factor = 0.001;
+  ctx.refinement.kway_fm.num_seed_nodes = 25;
+  ctx.refinement.kway_fm.num_iterations = 10;
+  ctx.refinement.kway_fm.unconstrained_num_iterations = 8;
+  ctx.refinement.kway_fm.unconstrained_min_improvement = 0.002;
+  ctx.refinement.kway_fm.unconstrained_penalty_min = 0.2;
+  ctx.refinement.kway_fm.unconstrained_penalty_max = 1.0;
+  ctx.refinement.kway_fm.unconstrained_rebalancing_node_inclusion_threshold = 0.7;
+  ctx.refinement.kway_fm.minimal_parallelism = 8;
 
   return ctx;
 }
@@ -477,14 +494,11 @@ Context create_strong_context() {
 
   ctx.refinement.algorithms = {
       RefinementAlgorithm::OVERLOAD_BALANCER,
-      // RefinementAlgorithm::UNDERLOAD_BALANCER, // Flows and FM do not support min block weights
-      RefinementAlgorithm::LABEL_PROPAGATION,
-      RefinementAlgorithm::KWAY_FM,
+      RefinementAlgorithm::UNCONSTRAINED_LABEL_PROPAGATION,
+      RefinementAlgorithm::UNCONSTRAINED_FM,
       RefinementAlgorithm::OVERLOAD_BALANCER,
-      // RefinementAlgorithm::UNDERLOAD_BALANCER,
       RefinementAlgorithm::TWOWAY_FLOW,
-      // RefinementAlgorithm::OVERLOAD_BALANCER,
-      RefinementAlgorithm::UNDERLOAD_BALANCER,
+      RefinementAlgorithm::OVERLOAD_BALANCER
   };
 
   return ctx;

@@ -22,25 +22,26 @@
 
 namespace kaminpar::shm {
 
-class OverloadBalancer : public Refiner {
+class BlockParallelOverloadBalancer : public Refiner {
   template <typename ConcretizedGraph>
   using GainCache = OnTheFlyGainCache<
       ConcretizedGraph,
-      /*iterate_nonadjacent_blocks=*/true,
-      /*iterate_exact_gains=*/true>;
+      /*iterate_nonadjacent_blocks=*/false,
+      /*iterate_exact_gains=*/true,
+      /*iterate_source_block=*/true>;
 
 public:
   using MoveTracker = std::function<void(NodeID, BlockID, BlockID)>;
 
-  explicit OverloadBalancer(const Context &ctx);
+  explicit BlockParallelOverloadBalancer(const Context &ctx);
 
-  ~OverloadBalancer() override;
+  ~BlockParallelOverloadBalancer() override;
 
-  OverloadBalancer &operator=(const OverloadBalancer &) = delete;
-  OverloadBalancer(const OverloadBalancer &) = delete;
+  BlockParallelOverloadBalancer &operator=(const BlockParallelOverloadBalancer &) = delete;
+  BlockParallelOverloadBalancer(const BlockParallelOverloadBalancer &) = delete;
 
-  OverloadBalancer &operator=(OverloadBalancer &&) = delete;
-  OverloadBalancer(OverloadBalancer &&) noexcept = default;
+  BlockParallelOverloadBalancer &operator=(BlockParallelOverloadBalancer &&) = delete;
+  BlockParallelOverloadBalancer(BlockParallelOverloadBalancer &&) noexcept = delete;
 
   [[nodiscard]] std::string name() const final;
 
@@ -82,5 +83,7 @@ private:
 
   MoveTracker _move_tracker = nullptr;
 };
+
+using OverloadBalancer = BlockParallelOverloadBalancer;
 
 } // namespace kaminpar::shm

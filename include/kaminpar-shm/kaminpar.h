@@ -25,7 +25,7 @@
 
 #define KAMINPAR_VERSION_MAJOR 3
 #define KAMINPAR_VERSION_MINOR 7
-#define KAMINPAR_VERSION_PATCH 2
+#define KAMINPAR_VERSION_PATCH 3
 
 namespace kaminpar::shm {
 
@@ -210,7 +210,9 @@ enum class RefinementAlgorithm {
   OVERLOAD_BALANCER,
   UNDERLOAD_BALANCER,
   LABEL_PROPAGATION,
+  UNCONSTRAINED_LABEL_PROPAGATION,
   KWAY_FM,
+  UNCONSTRAINED_FM,
   TWOWAY_FLOW,
   JET,
   MTKAHYPAR,
@@ -225,6 +227,8 @@ struct LabelPropagationRefinementContext {
 
   LabelPropagationImplementation impl;
   TieBreakingStrategy tie_breaking_strategy;
+
+  double unconstrained_min_improvement_factor;
 };
 
 enum class GainCacheStrategy {
@@ -247,6 +251,13 @@ struct KwayFMRefinementContext {
   bool unlock_seed_nodes;
   bool use_exact_abortion_threshold;
   double abortion_threshold;
+
+  int unconstrained_num_iterations;
+  double unconstrained_min_improvement;
+  double unconstrained_penalty_min;
+  double unconstrained_penalty_max;
+  double unconstrained_rebalancing_node_inclusion_threshold;
+  double unconstrained_upper_bound;
 
   GainCacheStrategy gain_cache_strategy;
   EdgeID constant_high_degree_threshold;
@@ -632,6 +643,7 @@ Context create_context_by_preset_name(const std::string &name);
 Context create_default_context();
 Context create_fast_context();
 Context create_eco_context();
+Context create_ueco_context();
 Context create_strong_context();
 
 Context create_terapart_context();
@@ -694,6 +706,9 @@ public:
 
   [[nodiscard]] bool sorted() const;
 
+  void set_level(int level);
+  [[nodiscard]] int level() const;
+
   [[nodiscard]] AbstractGraph *underlying_graph();
   [[nodiscard]] const AbstractGraph *underlying_graph() const;
 
@@ -707,6 +722,7 @@ public:
 
 private:
   std::unique_ptr<AbstractGraph> _underlying_graph;
+  int _level = 0;
 };
 
 [[nodiscard]] Graph compress(

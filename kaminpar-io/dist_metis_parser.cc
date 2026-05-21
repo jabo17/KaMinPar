@@ -85,9 +85,26 @@ void parse_graph(
     NextNodeCB &&next_node_cb,
     NextEdgeCB &&next_edge_cb
 ) {
-  static_assert(std::is_invocable_v<NextNodeCB, std::uint64_t>);
+  static_assert(
+      std::is_invocable_v<NextNodeCB, std::uint64_t> ||
+      std::is_invocable_v<NextNodeCB, std::uint64_t, std::size_t>
+  );
   static_assert(std::is_invocable_v<NextEdgeCB, std::uint64_t, std::uint64_t>);
-  constexpr bool stoppable = std::is_invocable_r_v<bool, NextNodeCB, std::uint64_t>;
+
+  const auto invoke_next_node = [&](const std::uint64_t node_weight,
+                                    const std::size_t node_start_pos) {
+    if constexpr (std::is_invocable_r_v<bool, NextNodeCB, std::uint64_t, std::size_t>) {
+      return next_node_cb(node_weight, node_start_pos);
+    } else if constexpr (std::is_invocable_v<NextNodeCB, std::uint64_t, std::size_t>) {
+      next_node_cb(node_weight, node_start_pos);
+      return false;
+    } else if constexpr (std::is_invocable_r_v<bool, NextNodeCB, std::uint64_t>) {
+      return next_node_cb(node_weight);
+    } else {
+      next_node_cb(node_weight);
+      return false;
+    }
+  };
 
   for (std::uint64_t u = 0; u < header.num_nodes; ++u) {
     toker.skip_spaces();
@@ -96,17 +113,15 @@ void parse_graph(
       toker.skip_spaces();
     }
 
+    const std::size_t node_start_pos = toker.position();
+
     std::uint64_t node_weight = 1;
     if (header.has_node_weights) {
       node_weight = toker.scan_uint();
     }
 
-    if constexpr (stoppable) {
-      if (next_node_cb(node_weight)) {
-        return;
-      }
-    } else {
-      next_node_cb(node_weight);
+    if (invoke_next_node(node_weight, node_start_pos)) {
+      return;
     }
 
     while (std::isdigit(toker.current())) {
@@ -156,7 +171,7 @@ std::tuple<NodeID, NodeID, EdgeID, std::size_t> find_node_by_node(
   parse_graph(
       toker,
       header,
-      [&](const auto) {
+      [&](const auto, const std::size_t node_start_pos) {
         if (current_node < first_node) {
           current_node += 1;
           return false;
@@ -164,7 +179,7 @@ std::tuple<NodeID, NodeID, EdgeID, std::size_t> find_node_by_node(
 
         if (current_node < last_node) {
           if (current_node - first_node == 0) {
-            start_pos = toker.position();
+            start_pos = node_start_pos;
             actual_first_edge = current_edge;
           }
 
@@ -197,7 +212,7 @@ std::tuple<NodeID, NodeID, EdgeID, std::size_t> find_node_by_edge(
   parse_graph(
       toker,
       header,
-      [&](const auto) {
+      [&](const auto, const std::size_t node_start_pos) {
         if (current_edge < first_edge) {
           first_node += 1;
           return false;
@@ -205,7 +220,7 @@ std::tuple<NodeID, NodeID, EdgeID, std::size_t> find_node_by_edge(
 
         if (current_edge < last_edge) {
           if (length == 0) {
-            start_pos = toker.position();
+            start_pos = node_start_pos;
             actual_first_edge = current_edge;
           }
 
@@ -238,7 +253,7 @@ std::tuple<NodeID, NodeID, EdgeID, std::size_t> find_node_by_memory_space(
   parse_graph(
       toker,
       header,
-      [&](const auto) {
+      [&](const auto, const std::size_t node_start_pos) {
         std::size_t memory_space = first_node * sizeof(EdgeID) + current_edge * sizeof(NodeID);
         if (memory_space < memory_space_start) {
           first_node += 1;
@@ -248,7 +263,7 @@ std::tuple<NodeID, NodeID, EdgeID, std::size_t> find_node_by_memory_space(
         memory_space += length * sizeof(EdgeID);
         if (memory_space < memory_space_stop) {
           if (length == 0) {
-            start_pos = toker.position();
+            start_pos = node_start_pos;
             first_edge = current_edge;
           }
 
@@ -393,10 +408,9 @@ DistributedCSRGraph csr_read(
   }
   nodes[node] = edge;
 
-  if (header.has_node_weights && mapper.next_ghost_node() > 0) {
-    StaticArray<NodeWeight> actual_node_weights(
-        num_local_nodes + mapper.next_ghost_node(), static_array::noinit
-    );
+  const NodeID num_total_nodes = mapper.next_ghost_node();
+  if (header.has_node_weights && num_total_nodes > num_local_nodes) {
+    StaticArray<NodeWeight> actual_node_weights(num_total_nodes, static_array::noinit);
 
     tbb::parallel_for(tbb::blocked_range<NodeID>(0, num_local_nodes), [&](const auto &r) {
       for (NodeID u = r.begin(); u != r.end(); ++u) {
@@ -484,7 +498,7 @@ DistributedCompressedGraph compress_read(
 
   StaticArray<NodeWeight> node_weights;
   if (header.has_node_weights) {
-    node_weights.resize(num_local_edges, static_array::noinit);
+    node_weights.resize(num_local_nodes, static_array::noinit);
   }
 
   if (num_local_nodes > 0) {
@@ -527,10 +541,9 @@ DistributedCompressedGraph compress_read(
     neighbourhood.shrink_to_fit();
   }
 
-  if (header.has_node_weights && mapper.next_ghost_node() > 0) {
-    StaticArray<NodeWeight> actual_node_weights(
-        num_local_nodes + mapper.next_ghost_node(), static_array::noinit
-    );
+  const NodeID num_total_nodes = mapper.next_ghost_node();
+  if (header.has_node_weights && num_total_nodes > num_local_nodes) {
+    StaticArray<NodeWeight> actual_node_weights(num_total_nodes, static_array::noinit);
 
     tbb::parallel_for(tbb::blocked_range<NodeID>(0, num_local_nodes), [&](const auto &r) {
       for (NodeID u = r.begin(); u != r.end(); ++u) {

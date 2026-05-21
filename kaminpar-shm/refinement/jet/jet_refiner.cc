@@ -37,7 +37,8 @@ public:
     SCOPED_TIMER("Jet Refiner");
     SCOPED_TIMER("Initialization");
 
-    const bool is_coarse_level = p_graph.graph().n() < _ctx.partition.n;
+    const bool is_coarse_level = p_graph.graph().level() > 0;
+
     if (is_coarse_level) {
       _num_rounds = _ctx.refinement.jet.num_rounds_on_coarse_level;
       _initial_gain_temp = _ctx.refinement.jet.initial_gain_temp_on_coarse_level;
@@ -67,7 +68,7 @@ public:
 
     using namespace std::placeholders;
 
-    OverloadBalancer balancer(_ctx);
+    BlockParallelOverloadBalancer balancer(_ctx);
     balancer.initialize(p_graph);
     balancer.track_moves(
         std::bind(&NormalSparseGainCache<Graph>::move, std::ref(gain_cache), _1, _2, _3)
