@@ -67,8 +67,7 @@ MetisHeader parse_header(MappedFileToker &toker) {
       "number of edges is too large for the edge ID type"
   );
   KASSERT(
-      num_edges <= (num_nodes * (num_nodes - 1)) / 2,
-      "specified number of edges is impossibly large"
+      num_edges <= (num_nodes * (num_nodes - 1)), "specified number of edges is impossibly large"
   );
 
   return {
